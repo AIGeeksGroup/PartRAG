@@ -16,7 +16,6 @@ PartRAG-specific additions are kept in:
 
 - `configs/partrag_stage1.yaml`
 - `configs/partrag_stage2.yaml`
-- `docs/PARTRAG_ALIGNMENT.md`
 - `scripts/build_partrag_retrieval_database.py`
 - `scripts/edit_partrag.py`
 - `src/retrieval/retrieval_module.py`
@@ -88,7 +87,6 @@ python scripts/edit_partrag.py \
 
 - Keep dependencies aligned with `settings/setup.sh` and `settings/requirements.txt`.
 - Dataset preprocessing instructions remain in `datasets/README.md`.
-- Paper-to-code mapping is maintained in `docs/PARTRAG_ALIGNMENT.md`.
 
 ## Attribution
 

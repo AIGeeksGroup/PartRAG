@@ -56,9 +56,12 @@ class ObjaversePartDataset(torch.utils.data.Dataset):
             data_configs = json.load(open(configs['dataset']['config']))
         data_configs = [config for config in data_configs if config['valid']]
         data_configs = [config for config in data_configs if self.min_num_parts <= config['num_parts'] <= self.max_num_parts]
+        #  :IOU
         if self.max_iou_mean is not None and self.max_iou_max is not None:
-            data_configs = [config for config in data_configs if config['iou_mean'] <= self.max_iou_mean]
-            data_configs = [config for config in data_configs if config['iou_max'] <= self.max_iou_max]
+            # IOU
+            if len(data_configs) > 0 and 'iou_mean' in data_configs[0]:
+                data_configs = [config for config in data_configs if config.get('iou_mean', 1.0) <= self.max_iou_mean]
+                data_configs = [config for config in data_configs if config.get('iou_max', 1.0) <= self.max_iou_max]
         if not self.balance_object_and_parts:
             if self.training:
                 data_configs = data_configs[:int(len(data_configs) * self.training_ratio)]
@@ -117,16 +120,16 @@ class ObjaversePartDataset(torch.utils.data.Dataset):
                 f"for data config: {data_config.get('file', 'unknown')}"
             )
         image_path = data_config['image_path']
-        image = Image.open(image_path).resize(self.image_size)
+        image = Image.open(image_path).convert('RGB').resize(self.image_size)  #  RGB
         if random.random() < self.rotating_ratio:
             image = self.transform(image)
-        image = np.array(image)
-        image = torch.from_numpy(image).to(torch.uint8) # [H, W, 3]
-        images = torch.stack([image] * part_surfaces.shape[0], dim=0) # [N, H, W, 3]
+        
+        #  :PIL Image(SimpleDataset)
+        # PartDatasetpart-level,
         return {
-            "images": images,
-            "part_surfaces": part_surfaces,
-            "part_labels": part_labels,
+            "images": image,  # PIL Image()
+            "part_surfaces": part_surfaces,  # [N, num_points, 3] - Npart
+            "part_labels": part_labels,  # [N] - Npart
         }
     
     def __getitem__(self, idx: int):
@@ -136,6 +139,32 @@ class ObjaversePartDataset(torch.utils.data.Dataset):
         data_config = self.data_configs[idx]
         data = self._get_data_by_config(data_config)
         return data
+    
+    def collate_fn(self, batch):
+        #  collate_fn(Batched)
+        batch = [data for data in batch if len(data) > 0]
+        
+        # PIL Images,objectimagenum_parts
+        images = []
+        for data in batch:
+            img = data['images']  # PIL Image
+            num_parts_this_obj = data['part_surfaces'].shape[0]
+            # part
+            images.extend([img] * num_parts_this_obj)
+        
+        # part
+        surfaces = torch.cat([data['part_surfaces'] for data in batch], dim=0) # [N, P, 6]
+        part_labels = torch.cat([data['part_labels'] for data in batch], dim=0)  # [N]
+        num_parts = torch.LongTensor([data['part_surfaces'].shape[0] for data in batch])
+        
+        # SimpleDataset
+        batch = {
+            "images": images,  # List[PIL.Image],=N(part)
+            "part_surfaces": surfaces,  # [N, num_points, 3]
+            "num_parts": num_parts,  # [M](object)
+            "part_labels": part_labels,  # [N]
+        }
+        return batch
         
 class BatchedObjaversePartDataset(ObjaversePartDataset):
     def __init__(
@@ -147,7 +176,7 @@ class BatchedObjaversePartDataset(ObjaversePartDataset):
         training: bool = True,
     ):
         assert training
-        assert batch_size > 1
+        assert batch_size >= 1  # batch_size=1
         super().__init__(configs, training)
         self.batch_size = batch_size
         self.is_main_process = is_main_process
@@ -162,7 +191,10 @@ class BatchedObjaversePartDataset(ObjaversePartDataset):
         
         self.object_ratio = configs['dataset']['object_ratio']
         # Here we keep the ratio of object to parts
-        self.object_configs = self.object_configs[:int(len(self.parts_configs) * self.object_ratio)]
+        # :parts_configs(ABO),object_configs
+        if len(self.parts_configs) > 0:
+            self.object_configs = self.object_configs[:int(len(self.parts_configs) * self.object_ratio)]
+        # else: ,
 
         dropped_data_configs = self.parts_configs + self.object_configs
         if shuffle:
@@ -215,16 +247,28 @@ class BatchedObjaversePartDataset(ObjaversePartDataset):
         return data
     
     def collate_fn(self, batch):
+        #  collate_fn,SimpleDataset
+        # :objectimagenum_parts,part
         batch = [data for data in batch if len(data) > 0]
-        images = torch.cat([data['images'] for data in batch], dim=0) # [N, H, W, 3]
+        
+        # PIL Images,objectimagenum_parts
+        images = []
+        for data in batch:
+            img = data['images']  # PIL Image
+            num_parts_this_obj = data['part_surfaces'].shape[0]
+            # part
+            images.extend([img] * num_parts_this_obj)
+        
+        # part
         surfaces = torch.cat([data['part_surfaces'] for data in batch], dim=0) # [N, P, 6]
-        part_labels = torch.cat([data['part_labels'] for data in batch], dim=0)
+        part_labels = torch.cat([data['part_labels'] for data in batch], dim=0)  # [N]
         num_parts = torch.LongTensor([data['part_surfaces'].shape[0] for data in batch])
-        assert images.shape[0] == surfaces.shape[0] == num_parts.sum() == self.batch_size
+        
+        # SimpleDataset
         batch = {
-            "images": images,
-            "part_surfaces": surfaces,
-            "num_parts": num_parts,
-            "part_labels": part_labels,
+            "images": images,  # List[PIL.Image],=N(part)
+            "part_surfaces": surfaces,  # [N, num_points, 3]
+            "num_parts": num_parts,  # [M](object)
+            "part_labels": part_labels,  # [N]
         }
         return batch

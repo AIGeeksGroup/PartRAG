@@ -425,10 +425,10 @@ class FusedTripoSGAttnProcessor2_0:
         return hidden_states
 
 # Modified from https://github.com/VAST-AI-Research/MIDI-3D/blob/main/midi/models/attention_processor.py#L264
-class PartCrafterAttnProcessor:
+class PartragAttnProcessor:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). This is
-    used in the PartCrafter model. It applies a normalization layer and rotary embedding on query and key vector.
+    used in the PartRAG model. It applies a normalization layer and rotary embedding on query and key vector.
     """
 
     def __init__(self):
@@ -601,9 +601,23 @@ class PartCrafterAttnProcessor:
             )
             hidden_states = hidden_states.to(query.dtype)
 
+        elif num_parts is None:
+            #  :num_parts,attention(part-level grouping)
+            hidden_states = F.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=attention_mask,
+                dropout_p=0.0,
+                is_causal=False,
+            )
+            hidden_states = hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
+            hidden_states = hidden_states.to(query.dtype)
         else:
             raise ValueError(
-                "num_parts must be a torch.Tensor or int, but got {}".format(type(num_parts))
+                "num_parts must be a torch.Tensor, int, or None, but got {}".format(type(num_parts))
             )
         
         # linear proj

@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from ..attention_processor import FusedTripoSGAttnProcessor2_0, TripoSGAttnProcessor2_0, FlashTripo2AttnProcessor2_0
 from ..embeddings import FrequencyPositionalEmbedding
-from ..transformers.partcrafter_transformer import DiTBlock
+from ..transformers.partrag_transformer import DiTBlock
 from .vae import DiagonalGaussianDistribution
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -278,7 +278,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental experimental.
 
         </Tip>
         """
@@ -304,7 +304,7 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental experimental.
 
         </Tip>
 
@@ -422,6 +422,11 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
             torch.arange(batch_size).to(x.device).repeat_interleave(num_points)
         )
 
+        #  BF16: FPSBF16,FP32
+        original_dtype = flattened_points.dtype
+        if original_dtype == torch.bfloat16:
+            flattened_points = flattened_points.float()
+
         # fps sampling
         sampling_ratio = 1.0 / 4
         sampled_indices = fps(
@@ -433,6 +438,10 @@ class TripoSGVAEModel(ModelMixin, ConfigMixin):
         sampled_points = flattened_points[sampled_indices].view(
             batch_size, -1, num_channels
         )
+
+        #  
+        if original_dtype == torch.bfloat16:
+            sampled_points = sampled_points.bfloat16()
 
         return sampled_points
 

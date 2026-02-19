@@ -2,6 +2,7 @@ from src.utils.typing_utils import *
 
 import os
 from omegaconf import OmegaConf
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -133,7 +134,12 @@ class ContrastiveLossHelper:
     ) -> torch.Tensor:
         if labels_query is None or labels_key is None:
             raise ValueError("labels_query and labels_key must be provided when positive_mask is None")
-        return (labels_query.unsqueeze(1) == labels_key.unsqueeze(0)).to(torch.float32)
+        mask = (labels_query.unsqueeze(1) == labels_key.unsqueeze(0)).to(torch.float32)
+        if mask.sum() == 0:
+            rand_idx = torch.randint(0, labels_key.shape[0], (labels_query.shape[0],), device=labels_query.device)
+            mask = torch.zeros_like(mask)
+            mask.scatter_(1, rand_idx.unsqueeze(1), 1.0)
+        return mask
 
     def compute(
         self,
@@ -144,6 +150,9 @@ class ContrastiveLossHelper:
         labels_query: Optional[torch.Tensor] = None,
         labels_key: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # Ensure float32 precision for stable contrastive computations
+        query = query.float()
+        key = key.float()
         query = F.normalize(query, dim=-1)
         key = F.normalize(key, dim=-1)
 
@@ -198,6 +207,77 @@ class ContrastiveLossHelper:
         )
         return 0.5 * (forward + backward)
 
+
+class FeatureQueue:
+    """Fixed-size feature queue used for momentum-queue contrastive training."""
+
+    def __init__(self, feature_dim: int, queue_size: int, device: torch.device):
+        self.feature_dim = int(feature_dim)
+        self.queue_size = int(queue_size)
+        self.device = device
+
+        self.features = torch.zeros(self.queue_size, self.feature_dim, device=self.device)
+        self.labels = torch.full((self.queue_size,), -1, dtype=torch.long, device=self.device)
+        self.ptr = 0
+        self.full = False
+
+    @torch.no_grad()
+    def enqueue(self, features: torch.Tensor, labels: torch.Tensor):
+        if features is None or labels is None:
+            return
+        if features.numel() == 0 or labels.numel() == 0:
+            return
+
+        features = F.normalize(features.detach().float(), dim=-1)
+        labels = labels.detach().long()
+
+        if features.shape[0] != labels.shape[0]:
+            raise ValueError("features and labels must have the same batch size for queue enqueue")
+        if features.shape[1] != self.feature_dim:
+            raise ValueError(
+                f"Queue feature dim mismatch: expected {self.feature_dim}, got {features.shape[1]}"
+            )
+
+        batch_size = features.shape[0]
+        if batch_size >= self.queue_size:
+            self.features.copy_(features[-self.queue_size :])
+            self.labels.copy_(labels[-self.queue_size :])
+            self.ptr = 0
+            self.full = True
+            return
+
+        end_ptr = self.ptr + batch_size
+        if end_ptr <= self.queue_size:
+            self.features[self.ptr : end_ptr] = features
+            self.labels[self.ptr : end_ptr] = labels
+        else:
+            first = self.queue_size - self.ptr
+            second = batch_size - first
+            self.features[self.ptr :] = features[:first]
+            self.labels[self.ptr :] = labels[:first]
+            self.features[:second] = features[first:]
+            self.labels[:second] = labels[first:]
+            self.full = True
+
+        self.ptr = (self.ptr + batch_size) % self.queue_size
+        if self.ptr == 0:
+            self.full = True
+
+    def get(self) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor]]:
+        if self.full:
+            return self.features, self.labels
+        if self.ptr == 0:
+            return None, None
+        return self.features[: self.ptr], self.labels[: self.ptr]
+
+
+@torch.no_grad()
+def momentum_update(online_model: torch.nn.Module, momentum_model: torch.nn.Module, momentum: float):
+    """EMA update for momentum encoder parameters."""
+    m = float(momentum)
+    for p_online, p_momentum in zip(online_model.parameters(), momentum_model.parameters()):
+        p_momentum.data.mul_(m).add_(p_online.data, alpha=1.0 - m)
+
 def get_configs(yaml_path: str, cli_configs: List[str]=[], **kwargs) -> DictConfig:
     yaml_configs = OmegaConf.load(yaml_path)
     cli_configs = OmegaConf.from_cli(cli_configs)
@@ -239,6 +319,12 @@ def get_lr_scheduler(name: str, optimizer: Optimizer, **kwargs) -> LRScheduler:
             optimizer=optimizer,
             lr_lambda=lambda epoch: max(0., 1. - epoch / kwargs["total_epochs"]),
         )
+    elif name == "cosine_annealing":
+        # Cosine Annealing with warmup support
+        total_epochs = kwargs.get("total_epochs", 400)
+        eta_min = kwargs.get("eta_min", 0)
+        from torch.optim.lr_scheduler import CosineAnnealingLR
+        return CosineAnnealingLR(optimizer, T_max=total_epochs, eta_min=eta_min)
     else:
         raise NotImplementedError(f"Not implemented lr scheduler: {name}")
 

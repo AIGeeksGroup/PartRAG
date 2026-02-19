@@ -116,7 +116,9 @@ def render_views_around_mesh(
     normalize_depth: bool = False,
     flags: int = pyrender.constants.RenderFlags.NONE,
     return_depth: bool = False, 
-    return_type: Literal['pil', 'ndarray'] = 'pil'
+    return_type: Literal['pil', 'ndarray'] = 'pil',
+    max_faces: int = 500000,  # 
+    simplify_on_error: bool = True  # 
 ) -> Union[
         List[Image.Image], 
         List[np.ndarray], 
@@ -129,41 +131,102 @@ def render_views_around_mesh(
     if isinstance(mesh, trimesh.Trimesh):
         mesh = trimesh.Scene(mesh)
 
-    scene = pyrender.Scene.from_trimesh_scene(mesh)
-    light = pyrender.DirectionalLight(
-        color=np.ones(3), 
-        intensity=light_intensity
-    ) if light_intensity is not None else None
-    camera = pyrender.PerspectiveCamera(
-        yfov=np.deg2rad(fov),
-        aspectRatio=image_size[0]/image_size[1],
-        znear=znear,
-        zfar=zfar
-    )
-    renderer = pyrender.OffscreenRenderer(*image_size)
+    # 
+    simplified = False
+    try:
+        total_faces = sum([m.faces.shape[0] for m in mesh.geometry.values() if hasattr(m, 'faces')])
+        if total_faces > max_faces:
+            print(f":  ({total_faces} ),  {max_faces} ")
+            for name, geom in mesh.geometry.items():
+                if hasattr(geom, 'faces') and geom.faces.shape[0] > 0:
+                    target_faces = int(geom.faces.shape[0] * max_faces / total_faces)
+                    if target_faces > 100:  # 100
+                        # :simplify_quadric_decimation,
+                        ratio = target_faces / geom.faces.shape[0]
+                        mesh.geometry[name] = geom.simplify_quadric_decimation(ratio)
+            simplified = True
+    except Exception as e:
+        print(f": {e}, ")
 
-    camera_poses = create_circular_camera_poses(
-        num_views, 
-        radius, 
-        axis = axis
-    )
-
-    images, depths = [], []
-    for pose in camera_poses:
-        image, depth = render(
-            scene, renderer, camera, pose, light, 
-            normalize_depth=normalize_depth,
-            flags=flags,
-            return_type=return_type
+    def _render_attempt():
+        """"""
+        scene = pyrender.Scene.from_trimesh_scene(mesh)
+        light = pyrender.DirectionalLight(
+            color=np.ones(3), 
+            intensity=light_intensity
+        ) if light_intensity is not None else None
+        camera = pyrender.PerspectiveCamera(
+            yfov=np.deg2rad(fov),
+            aspectRatio=image_size[0]/image_size[1],
+            znear=znear,
+            zfar=zfar
         )
-        images.append(image)
-        depths.append(depth)
+        renderer = pyrender.OffscreenRenderer(*image_size)
 
-    renderer.delete()
+        camera_poses = create_circular_camera_poses(
+            num_views, 
+            radius, 
+            axis = axis
+        )
 
-    if return_depth:
+        images, depths = [], []
+        try:
+            for pose in camera_poses:
+                image, depth = render(
+                    scene, renderer, camera, pose, light, 
+                    normalize_depth=normalize_depth,
+                    flags=flags,
+                    return_type=return_type
+                )
+                images.append(image)
+                depths.append(depth)
+        finally:
+            renderer.delete()
+        
         return images, depths
-    return images
+
+    # 
+    try:
+        images, depths = _render_attempt()
+        if return_depth:
+            return images, depths
+        return images
+    except Exception as e:
+        print(f": {e}")
+        
+        # ,
+        if simplify_on_error and not simplified:
+            try:
+                print(f"...")
+                for name, geom in mesh.geometry.items():
+                    if hasattr(geom, 'faces') and geom.faces.shape[0] > 10000:
+                        # :10000
+                        # :simplify_quadric_decimation,
+                        ratio = 10000 / geom.faces.shape[0]
+                        mesh.geometry[name] = geom.simplify_quadric_decimation(ratio)
+                
+                images, depths = _render_attempt()
+                if return_depth:
+                    return images, depths
+                return images
+            except Exception as e2:
+                print(f": {e2}")
+        
+        # ,
+        print("")
+        if return_type == 'pil':
+            black_image = Image.new('RGB', image_size, color='black')
+            images = [black_image] * num_views
+            if return_depth:
+                depths = [Image.new('L', image_size, color=0)] * num_views
+        else:
+            images = [np.zeros((*image_size[::-1], 3), dtype=np.uint8)] * num_views
+            if return_depth:
+                depths = [np.zeros(image_size[::-1], dtype=np.uint8)] * num_views
+        
+        if return_depth:
+            return images, depths
+        return images
 
 def render_normal_views_around_mesh(
     mesh: Union[trimesh.Trimesh, trimesh.Scene],
@@ -241,7 +304,7 @@ def render_single_view(
     radius: float = 3.5,
     image_size: tuple = (512, 512),
     fov: float = 40.0,
-    light_intensity: Optional[float] = 5.0,
+    light_intensity: Optional[float] = 15.0,  # 5.015.0
     num_env_lights: int = 0, 
     znear: float = 0.1,
     zfar: float = 10.0,

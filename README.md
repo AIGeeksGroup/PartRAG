@@ -1,118 +1,95 @@
-# PartCrafter 训练和推理
+# PartRAG
 
-PartCrafter 用于 part-level 3D 物体生成，支持检索增强功能。
+This repository is based on [PartCrafter](https://github.com/wgsxm/PartCrafter) and extends it with the PartRAG retrieval and editing pipeline.
 
-## 快速开始
+## Project Structure
 
-### 训练
+Core structure follows the upstream layout:
 
-```bash
-cd /root/autodl-tmp/PartCrafter
-./start_training.sh
-```
+- `configs/`
+- `datasets/`
+- `scripts/`
+- `settings/`
+- `src/`
 
-### 推理
+PartRAG-specific additions are kept in:
 
-**基础推理**：
-```bash
-python scripts/inference_partcrafter.py \
-  --input_image input.png \
-  --output_dir outputs \
-  --num_parts 4
-```
+- `configs/partrag_stage1.yaml`
+- `configs/partrag_stage2.yaml`
+- `docs/PARTRAG_ALIGNMENT.md`
+- `scripts/build_partrag_retrieval_database.py`
+- `scripts/edit_partrag.py`
+- `src/retrieval/retrieval_module.py`
+- `src/utils/part_editing.py`
 
-**检索增强推理**（idea2）：
-```bash
-# 1. 构建检索数据库
-python scripts/build_retrieval_database.py \
-  --images_dir reference_images \
-  --output_path retrieval_db/database.pt
+## Training (Paper Protocol)
 
-# 2. 运行检索增强生成
-python scripts/inference_with_retrieval.py \
-  --model_path /root/autodl-tmp/output_training/.../checkpoints/... \
-  --input_image input.png \
-  --output_dir outputs_retrieval \
-  --num_parts 4 \
-  --use_retrieval \
-  --retrieval_db_path retrieval_db/database.pt \
-  --retrieval_db_images_dir reference_images
-```
-
-## 目录结构
-
-```
-PartCrafter/
-├── src/                    # 源代码
-│   ├── retrieval/          # 检索增强模块（idea2）
-│   ├── models/             # 模型定义
-│   ├── pipelines/          # Pipeline（支持检索增强）
-│   └── ...
-├── scripts/                # 工具脚本
-├── configs/                # 训练配置
-├── pretrained_weights/     # 预训练模型
-└── start_training.sh       # 训练启动脚本
-```
-
-## 核心功能
-
-### 1. Part-Level 3D生成
-基于图像生成多部件3D物体
-
-### 2. 检索增强生成（idea2）
-- 参考 ReMoMask 检索增强方法
-- 使用 CLIP 检索相关参考图像
-- Concatenate embeddings 通过 cross attention 指导生成
-
-## 工具脚本
-
-| 脚本 | 功能 |
-|------|------|
-| `inference_partcrafter.py` | 基础推理 |
-| `inference_with_retrieval.py` | 检索增强推理 |
-| `build_retrieval_database.py` | 构建检索数据库 |
-| `check_and_select_model.py` | 模型选择工具 |
-| `train_my_dataset.sh` | 自定义数据训练 |
-
-## 模型路径
-
-推荐使用训练后的 EMA checkpoint：
-```
-/root/autodl-tmp/output_training/full_training_*/checkpoints/000XXX/
-```
-
-## 参数说明
-
-### 训练参数
-- `--num_parts`: 部件数量（4-8）
-- `--batch_size`: 批大小
-- `--learning_rate`: 学习率
-
-### 推理参数
-- `--num_inference_steps`: 推理步数（30-100）
-- `--guidance_scale`: 引导强度（5.0-10.0）
-- `--seed`: 随机种子
-
-### 检索增强参数
-- `--use_retrieval`: 启用检索增强
-- `--num_retrieved_images`: 检索图像数量（1-3）
-- `--retrieval_query_text`: 文本查询（可选）
-
-## 依赖
-
-- PyTorch
-- Diffusers
-- Transformers
-- CLIP（用于检索增强）
-
-## VPN（如需下载模型）
+Stage 1 (RAG + flow matching):
 
 ```bash
-source /etc/network_turbo
-export HF_ENDPOINT=https://hf-mirror.com
+bash scripts/train_partrag.sh \
+  --config configs/partrag_stage1.yaml \
+  --use_ema \
+  --gradient_accumulation_steps 1 \
+  --output_dir output \
+  --tag partrag_stage1
 ```
 
-## 参考
+Stage 2 (add hierarchical contrastive retrieval losses):
 
-- **ReMoMask**: https://aigeeksgroup.github.io/ReMoMask/
-- **检索增强方法**: Concatenate retrieved content with prompt via cross attention
+```bash
+bash scripts/train_partrag.sh \
+  --config configs/partrag_stage2.yaml \
+  --use_ema \
+  --gradient_accumulation_steps 1 \
+  --output_dir output \
+  --tag partrag_stage2
+```
+
+## Pretrained Weights
+
+PartRAG is designed to fine-tune from upstream open checkpoints.
+
+- Default upstream repositories:
+  - `wgsxm/PartCrafter` (base model)
+  - `wgsxm/PartCrafter-Scene` (scene model)
+- Training and inference scripts now resolve weights in this order:
+  - preferred local PartRAG path (for example `/root/autodl-tmp/PartRAG/pretrained_weights/PartRAG`)
+  - local legacy PartCrafter-compatible paths
+  - auto-download from upstream if not found locally
+- Use `--local_files_only` to disable auto-download and require local checkpoints.
+
+## Retrieval Database (Paper Settings)
+
+Build CLIP + DINOv2 retrieval DB with k-means subset selection and FAISS index:
+
+```bash
+python scripts/build_partrag_retrieval_database.py \
+  --config configs/partrag_stage1.yaml \
+  --output_dir retrieval_database_high_quality \
+  --subset_size 1236 \
+  --build_faiss
+```
+
+## Editing
+
+Part-level masked editing (preserves non-target parts and part transforms):
+
+```bash
+python scripts/edit_partrag.py \
+  --checkpoint_path <ckpt_dir> \
+  --input_image <image_path> \
+  --target_parts 1,3 \
+  --edit_text "replace legs" \
+  --retrieval_db <retrieval_db_dir>
+```
+
+## Notes
+
+- Keep dependencies aligned with `settings/setup.sh` and `settings/requirements.txt`.
+- Dataset preprocessing instructions remain in `datasets/README.md`.
+- Paper-to-code mapping is maintained in `docs/PARTRAG_ALIGNMENT.md`.
+
+## Attribution
+
+PartRAG builds on the open-source implementation of PartCrafter. Upstream-derived components are kept in the same module layout and extended with retrieval and editing-specific logic.

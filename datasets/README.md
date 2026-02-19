@@ -1,5 +1,5 @@
 # Dataset Preparation
-We provide the data preprocessing pipeline for PartCrafter. By following the instructions, you can generate the training data from the raw GLB data. While we are considering releasing the preprocessed dataset, please note that it may take some time before it becomes available. 
+We provide the data preprocessing pipeline for PartRAG. The implementation is adapted from the upstream PartCrafter workflow. By following the instructions, you can generate training data from raw GLB files. While we are considering releasing a preprocessed dataset, please note that it may take some time before it becomes available.
 
 ## Download Raw Data
 Our final model uses a subset of [Objaverse](https://huggingface.co/datasets/allenai/objaverse) provided by [LGM](https://github.com/ashawkey/objaverse_filter) and [Amazon Berkeley Objects (ABO) Dataset](https://amazon-berkeley-objects.s3.amazonaws.com/index.html). Please download the raw GLB files according to their instructions. You can also use other source of data. 

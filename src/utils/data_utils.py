@@ -178,7 +178,10 @@ def load_surface(data, num_pc=204800):
     normal = data["surface_normals"]  # Nx3
 
     rng = np.random.default_rng()
-    ind = rng.choice(surface.shape[0], num_pc, replace=False)
+    # num_pc,
+    replace = surface.shape[0] < num_pc
+    actual_num_pc = min(surface.shape[0], num_pc)
+    ind = rng.choice(surface.shape[0], actual_num_pc, replace=replace)
     surface = torch.FloatTensor(surface[ind])
     normal = torch.FloatTensor(normal[ind])
     surface = torch.cat([surface, normal], dim=-1)

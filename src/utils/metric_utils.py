@@ -11,7 +11,41 @@ def sample_from_mesh(
     if num_samples is None:
         return mesh.vertices
     else:
-        return mesh.sample(num_samples)
+        # OOM:mesh,
+        MAX_FACES_HARD_LIMIT = 8000000   # :800,
+        MAX_FACES_SOFT_LIMIT = 3000000   # :300,()
+        
+        num_faces = len(mesh.faces)
+        
+        # mesh(OOM)
+        if num_faces > MAX_FACES_HARD_LIMIT:
+            print(f"  ({num_faces}  > {MAX_FACES_HARD_LIMIT}), OOM")
+            return np.zeros((num_samples, 3))
+        
+        # mesh
+        if num_faces > MAX_FACES_SOFT_LIMIT:
+            print(f"  ({num_faces} ),  {MAX_FACES_SOFT_LIMIT} ")
+            try:
+                # 
+                target_ratio = min(0.99, MAX_FACES_SOFT_LIMIT / num_faces)
+                # face_count()
+                mesh = mesh.simplify_quadric_decimation(face_count=MAX_FACES_SOFT_LIMIT)
+                print(f" : {num_faces} -> {len(mesh.faces)} ")
+            except Exception as e:
+                print(f" : {e}, ...")
+                # ,()
+                try:
+                    return mesh.sample(num_samples)
+                except Exception as e2:
+                    print(f" : {e2}, dummy")
+                    return np.zeros((num_samples, 3))
+        
+        # mesh,
+        try:
+            return mesh.sample(num_samples)
+        except Exception as e:
+            print(f" : {e}, dummy")
+            return np.zeros((num_samples, 3))
 
 def sample_two_meshes(
     mesh1: trimesh.Trimesh,
@@ -97,8 +131,13 @@ def compute_cd_and_f_score_in_training(
     metric: str = 'l2'
 ):
     gt_points = gt_surface[:, :3]
-    num_samples = max(num_samples, gt_points.shape[0])
-    gt_points = gt_points[np.random.choice(gt_points.shape[0], num_samples, replace=False)]
+    # GTnum_samples,;num_samples
+    actual_num_samples = min(num_samples, gt_points.shape[0])
+    if actual_num_samples < gt_points.shape[0]:
+        gt_points = gt_points[np.random.choice(gt_points.shape[0], actual_num_samples, replace=False)]
+    # ,
+    elif num_samples > gt_points.shape[0]:
+        gt_points = gt_points[np.random.choice(gt_points.shape[0], num_samples, replace=True)]
     pred_points = sample_from_mesh(pred_mesh, num_samples)
     min_1_to_2, min_2_to_1 = compute_mutual_nearest_distance(gt_points, pred_points, metric=metric)
     chamfer_dist = np.mean(min_2_to_1) + np.mean(min_1_to_2)

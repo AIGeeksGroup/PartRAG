@@ -3,6 +3,7 @@ from src.utils.typing_utils import *
 import torch
 
 from .objaverse_part import ObjaversePartDataset, BatchedObjaversePartDataset
+from .objaverse_simple import ObjaverseSimpleDataset, BatchedObjaverseSimpleDataset
 
 # Copied from https://github.com/huggingface/pytorch-image-models/blob/main/timm/data/loader.py
 class MultiEpochsDataLoader(torch.utils.data.DataLoader):

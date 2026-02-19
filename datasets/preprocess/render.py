@@ -29,7 +29,8 @@ if __name__ == '__main__':
         os.makedirs(output_path)
 
     mesh = normalize_mesh(trimesh.load(input_path, process=False))
-    mesh = mesh.to_geometry()
+    # Convert a scene to merged geometry if needed.
+    # mesh = mesh.to_geometry()
     image = render_single_view(
         mesh,
         radius=RADIUS,

@@ -44,7 +44,7 @@ class TransformerDiffusionMixin:
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental experimental.
 
         </Tip>
 
@@ -68,7 +68,7 @@ class TransformerDiffusionMixin:
 
         <Tip warning={true}>
 
-        This API is 🧪 experimental.
+        This API is experimental experimental.
 
         </Tip>
 

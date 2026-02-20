@@ -1,4 +1,14 @@
-# PartRAG
+# <img src="partrag_logo.png" alt="logo" width="30"/> PartRAG: Retrieval-Augmented Part-Level 3D Generation and Editing
+
+This is the official repository for the paper:
+
+> **PartRAG: Retrieval-Augmented Part-Level 3D Generation and Editing**
+>
+> Peize Li\*, [Zeyu Zhang](https://steve-zeyu-zhang.github.io/)\*†, Hao Tang‡
+>
+> \*Equal contribution. †Project lead. ‡Corresponding author.
+>
+> ### [Paper](https://arxiv.org/abs/2602.17033) | [HF Paper]()
 
 This repository is based on [PartCrafter](https://github.com/wgsxm/PartCrafter) and extends it with the PartRAG retrieval and editing pipeline.
 

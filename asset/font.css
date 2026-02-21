@@ -1,0 +1,45 @@
+div,
+li,
+i,
+strong {
+    font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+    font-weight: 500;
+}
+
+div {
+    font-size: medium;
+}
+
+.css-rainbow-text {
+    background: linear-gradient(to right, violet, indigo, blue, green, orange, red);
+    color: #0000;
+    -webkit-background-clip: text;
+    background-clip: text;
+    display: inline-block;
+}
+
+.rainbow-gradient {
+  margin-top: 0px;
+  margin-bottom: 10px;
+  font-family: sans-serif;
+  background: linear-gradient(to right, #ef5350, #f48fb1, #7e57c2, #2196f3, #26c6da, #43a047, #eeff41, #f9a825, #ff5722);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.seed {
+    font-size: 20px;
+}
+
+h3 {
+    margin-top: 30px;
+    margin-bottom: 30px;
+}
+
+h4 {
+    font-size: 22px;
+}
+
+.img-responsive {
+    margin-bottom: 20px;
+}

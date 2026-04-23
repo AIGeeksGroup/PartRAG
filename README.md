@@ -10,6 +10,18 @@ This is the official repository for the paper:
 >
 > ### [Paper](https://arxiv.org/abs/2602.17033) | [Website](https://aigeeksgroup.github.io/PartRAG/) | [Model](https://huggingface.co/AIGeeksGroup/PartRAG) | [HF Paper]()
 
+
+## Citation
+
+```
+@article{li2026partrag,
+  title={PartRAG: Retrieval-Augmented Part-Level 3D Generation and Editing},
+  author={Li, Peize and Zhang, Zeyu and Tang, Hao},
+  journal={arXiv preprint arXiv:2602.17033},
+  year={2026}
+}
+```
+
 This repository is based on [PartCrafter](https://github.com/wgsxm/PartCrafter) and extends it with the PartRAG retrieval and editing pipeline.
 
 ## Project Structure
